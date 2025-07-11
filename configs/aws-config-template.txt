@@ -1,0 +1,10 @@
+# AWS Configuration for ROSA
+# Copy this to ~/.aws/config and update with your values
+
+[default]
+region = us-east-1
+output = json
+
+[profile rosa-admin]
+region = us-east-1
+output = json
