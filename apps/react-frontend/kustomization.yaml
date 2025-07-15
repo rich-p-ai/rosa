@@ -3,6 +3,9 @@ kind: Kustomization
 
 resources:
 - namespace.yaml
+- serviceaccount.yaml
+- scc.yaml
+- scc-rolebinding.yaml
 - deployment-ssh.yaml
 - service-ssh.yaml
 - route-ssh.yaml
