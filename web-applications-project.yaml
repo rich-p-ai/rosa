@@ -9,7 +9,7 @@ metadata:
 spec:
   description: Project for ROSA Web Applications
   sourceRepos:
-  - 'https://github.com/rich-p-ai/apps.git'
+  - 'https://github.com/rich-p-ai/rosa.git'
   destinations:
   - namespace: 'react-frontend'
     server: https://kubernetes.default.svc

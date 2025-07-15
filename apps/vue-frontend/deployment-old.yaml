@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vue-frontend
+  namespace: vue-frontend
+  labels:
+    app: vue-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: vue-frontend
+  template:
+    metadata:
+      labels:
+        app: vue-frontend
+    spec:
+      containers:
+      - name: vue-app
+        image: registry.redhat.io/ubi9/nginx-120:latest
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: nginx.conf
+        - name: app-content
+          mountPath: /usr/share/nginx/html
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      initContainers:
+      - name: vue-builder
+        image: registry.redhat.io/ubi9/nodejs-18:latest
+        command: ["/bin/sh"]
+        args: ["-c", "cd /app && npm install && npm run build && cp -r dist/* /usr/share/nginx/html/"]
+        volumeMounts:
+        - name: app-source
+          mountPath: /app
+        - name: app-content
+          mountPath: /usr/share/nginx/html
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: vue-config
+      - name: app-source
+        configMap:
+          name: vue-source
+      - name: app-content
+        emptyDir: {}

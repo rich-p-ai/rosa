@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: react-frontend-ssh
+  namespace: react-frontend
+  labels:
+    app: react-frontend-ssh
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: react-frontend-ssh
+  template:
+    metadata:
+      labels:
+        app: react-frontend-ssh
+    spec:
+      containers:
+      - name: ssh-server
+        image: registry.redhat.io/ubi9/ubi:latest
+        ports:
+        - containerPort: 22
+          name: ssh
+        env:
+        - name: SSH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: react-frontend-ssh-secret
+              key: password
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          set -e
+          dnf update -y
+          dnf install -y openssh-server passwd sudo vim nano curl git
+          
+          sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+          echo "AllowUsers developer" >> /etc/ssh/sshd_config
+          
+          ssh-keygen -A
+          
+          useradd -m -s /bin/bash developer
+          echo "developer:$SSH_PASSWORD" | chpasswd
+          usermod -aG wheel developer
+          echo "developer ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/developer
+          
+          mkdir -p /home/developer/workspace/react-app
+          echo "# React Frontend Development Environment" > /home/developer/workspace/react-app/README.md
+          chown -R developer:developer /home/developer/workspace
+          
+          exec /usr/sbin/sshd -D
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+        securityContext:
+          runAsNonRoot: false
+          allowPrivilegeEscalation: true
+        livenessProbe:
+          tcpSocket:
+            port: 22
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          tcpSocket:
+            port: 22
+          initialDelaySeconds: 30
+          periodSeconds: 10

@@ -1,0 +1,242 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nodejs-backend-ssh
+  namespace: nodejs-backend
+  labels:
+    app: nodejs-backend-ssh
+    app.kubernetes.io/name: nodejs-backend-ssh
+    app.kubernetes.io/part-of: web-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nodejs-backend-ssh
+  template:
+    metadata:
+      labels:
+        app: nodejs-backend-ssh
+    spec:
+      serviceAccountName: default
+      containers:
+      - name: ssh-server
+        image: registry.redhat.io/ubi9/ubi:latest
+        ports:
+        - containerPort: 22
+          name: ssh
+        env:
+        - name: SSH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: nodejs-backend-ssh-secret
+              key: password
+        - name: SSH_USERNAME
+          value: "developer"
+        command:
+        - /bin/bash
+        - -c
+        - |
+          # Install SSH server and required packages
+          dnf update -y
+          dnf install -y openssh-server passwd sudo vim nano curl git
+          
+          # Configure SSH
+          sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+          sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+          echo "ChallengeResponseAuthentication yes" >> /etc/ssh/sshd_config
+          echo "UsePAM yes" >> /etc/ssh/sshd_config
+          
+          # Create developer user
+          useradd -m -s /bin/bash $SSH_USERNAME
+          echo "$SSH_USERNAME:$SSH_PASSWORD" | chpasswd
+          usermod -aG wheel $SSH_USERNAME
+          echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$SSH_USERNAME
+          
+          # Setup workspace directory
+          mkdir -p /home/$SSH_USERNAME/workspace/src
+          chown -R $SSH_USERNAME:$SSH_USERNAME /home/$SSH_USERNAME/workspace
+          
+          # Create sample Node.js files for editing
+          cat > /home/$SSH_USERNAME/workspace/src/app.js << 'EOF'
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 3000;
+
+// Middleware
+app.use(express.json());
+app.use(express.static('public'));
+
+// Routes - Edit these via SSH access
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Node.js Backend - ROSA Deployment',
+    ssh_access: 'ssh developer@nodejs-backend-ssh.nodejs-backend.svc.cluster.local',
+    status: 'running',
+    editable: 'This API can be modified through SSH access'
+  });
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    environment: 'ROSA cluster'
+  });
+});
+
+app.get('/api/ssh-info', (req, res) => {
+  res.json({
+    ssh_service: 'nodejs-backend-ssh-service',
+    ssh_port: 22,
+    username: 'developer',
+    workspace: '/home/developer/workspace/src',
+    editable_files: [
+      'app.js',
+      'package.json',
+      'routes/api.js'
+    ]
+  });
+});
+
+// Start server
+app.listen(port, () => {
+  console.log(`Node.js Backend with SSH access running on port ${port}`);
+});
+
+module.exports = app;
+EOF
+          
+          cat > /home/$SSH_USERNAME/workspace/src/package.json << 'EOF'
+{
+  "name": "nodejs-backend-ssh",
+  "version": "1.0.0",
+  "description": "Node.js Backend with SSH access for ROSA deployment",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["nodejs", "express", "ssh", "rosa", "backend"],
+  "author": "Developer",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.0",
+    "cors": "^2.8.5",
+    "helmet": "^6.0.0",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.20"
+  }
+}
+EOF
+          
+          mkdir -p /home/$SSH_USERNAME/workspace/src/routes
+          cat > /home/$SSH_USERNAME/workspace/src/routes/api.js << 'EOF'
+// API Routes - Edit via SSH access
+const express = require('express');
+const router = express.Router();
+
+// User management routes
+router.get('/users', (req, res) => {
+  res.json({
+    users: [
+      { id: 1, name: 'John Doe', role: 'admin' },
+      { id: 2, name: 'Jane Smith', role: 'user' }
+    ],
+    ssh_editable: true
+  });
+});
+
+router.post('/users', (req, res) => {
+  const { name, role } = req.body;
+  res.json({
+    message: 'User created successfully',
+    user: { id: Date.now(), name, role },
+    note: 'This endpoint can be modified via SSH'
+  });
+});
+
+// Data processing routes
+router.get('/data', (req, res) => {
+  res.json({
+    data: 'Sample data from Node.js backend',
+    processed_at: new Date().toISOString(),
+    ssh_access: 'Available for real-time editing'
+  });
+});
+
+module.exports = router;
+EOF
+          
+          cat > /home/$SSH_USERNAME/workspace/src/README.md << 'EOF'
+# Node.js Backend with SSH Access
+
+## SSH Access Information
+- **Service**: nodejs-backend-ssh-service
+- **Port**: 22
+- **Username**: developer
+- **Workspace**: /home/developer/workspace/src
+
+## Editable Files
+- `app.js` - Main application file
+- `package.json` - Project configuration
+- `routes/api.js` - API routes
+- `public/` - Static files directory
+
+## Usage
+1. SSH into the container: `ssh developer@nodejs-backend-ssh-service:22`
+2. Navigate to workspace: `cd /home/developer/workspace/src`
+3. Edit files with vim/nano
+4. Changes take effect immediately (restart if needed)
+
+## API Endpoints
+- `GET /` - Application info
+- `GET /api/health` - Health check
+- `GET /api/ssh-info` - SSH access information
+- `GET /api/users` - User management
+- `POST /api/users` - Create user
+EOF
+          
+          chown -R $SSH_USERNAME:$SSH_USERNAME /home/$SSH_USERNAME/workspace
+          
+          # Generate SSH host keys
+          ssh-keygen -A
+          
+          # Start SSH daemon
+          exec /usr/sbin/sshd -D
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+        securityContext:
+          runAsNonRoot: false
+          allowPrivilegeEscalation: true
+        livenessProbe:
+          tcpSocket:
+            port: 22
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 22
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/developer/workspace
+        - name: ssh-config-volume
+          mountPath: /etc/ssh/sshd_config.d
+      volumes:
+      - name: workspace-volume
+        emptyDir: {}
+      - name: ssh-config-volume
+        emptyDir: {}

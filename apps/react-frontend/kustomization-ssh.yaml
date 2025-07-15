@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- namespace.yaml
+- deployment-ssh.yaml
+- service-ssh.yaml
+- route-ssh.yaml
+- ssh-nodeport-service.yaml
+
+commonLabels:
+  app: react-frontend-ssh
+  app.kubernetes.io/name: react-frontend-ssh
+  app.kubernetes.io/part-of: web-applications
+
+namespace: react-frontend

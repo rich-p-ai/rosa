@@ -1,0 +1,164 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ssh-bastion
+  namespace: ssh-access
+  labels:
+    app: ssh-bastion
+    app.kubernetes.io/name: ssh-bastion
+    app.kubernetes.io/part-of: ssh-access
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ssh-bastion
+  template:
+    metadata:
+      labels:
+        app: ssh-bastion
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1001
+      containers:
+      - name: ssh-server
+        image: registry.redhat.io/ubi9/ubi:latest
+        ports:
+        - containerPort: 2222
+          name: ssh
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1001
+          seccompProfile:
+            type: RuntimeDefault
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - NET_BIND_SERVICE
+        env:
+        - name: SSH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ssh-access-secret
+              key: ssh-password
+        - name: REACT_FRONTEND_URL
+          value: "https://react-frontend-route-react-frontend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com"
+        - name: VUE_FRONTEND_URL
+          value: "https://vue-frontend-route-vue-frontend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com"
+        - name: ANGULAR_FRONTEND_URL
+          value: "https://angular-frontend-route-angular-frontend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com"
+        - name: NODEJS_BACKEND_URL
+          value: "https://nodejs-backend-route-nodejs-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com"
+        - name: DJANGO_BACKEND_URL
+          value: "https://django-backend-route-django-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com"
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          set -e
+          echo "Setting up SSH Bastion for ROSA Web Applications..."
+          
+          # Install required packages
+          microdnf update -y
+          microdnf install -y openssh-server passwd sudo vim nano curl git procps-ng
+          
+          # Configure SSH
+          mkdir -p /etc/ssh
+          ssh-keygen -A -f /tmp/ssh-keys
+          cp /tmp/ssh-keys/ssh_host_* /etc/ssh/
+          
+          # Create SSH config
+          cat > /etc/ssh/sshd_config << 'EOF'
+          Port 2222
+          PasswordAuthentication yes
+          PermitRootLogin no
+          AllowUsers developer
+          PidFile /tmp/sshd.pid
+          AuthorizedKeysFile /home/developer/.ssh/authorized_keys
+          HostKey /etc/ssh/ssh_host_rsa_key
+          HostKey /etc/ssh/ssh_host_ecdsa_key
+          HostKey /etc/ssh/ssh_host_ed25519_key
+          EOF
+          
+          # Create developer user
+          useradd -m -s /bin/bash -u 1001 developer || true
+          echo "developer:$SSH_PASSWORD" | chpasswd
+          
+          # Setup SSH directory
+          mkdir -p /home/developer/.ssh
+          touch /home/developer/.ssh/authorized_keys
+          chmod 700 /home/developer/.ssh
+          chmod 600 /home/developer/.ssh/authorized_keys
+          chown -R developer:developer /home/developer/.ssh
+          
+          # Create welcome script
+          cat > /home/developer/welcome.sh << 'EOF'
+          #!/bin/bash
+          echo "=========================================="
+          echo "🚀 Welcome to ROSA SSH Bastion"
+          echo "=========================================="
+          echo ""
+          echo "Available Applications:"
+          echo "📱 React Frontend:  $REACT_FRONTEND_URL"
+          echo "🎯 Vue Frontend:    $VUE_FRONTEND_URL"
+          echo "⚡ Angular Frontend: $ANGULAR_FRONTEND_URL"
+          echo "🟢 Node.js Backend: $NODEJS_BACKEND_URL"
+          echo "🐍 Django Backend:  $DJANGO_BACKEND_URL"
+          echo ""
+          echo "Useful Commands:"
+          echo "  test-apps    - Test all application endpoints"
+          echo "  check-pods   - Check application pod status"
+          echo "  app-logs     - View application logs"
+          echo "  oc --help    - OpenShift CLI help"
+          echo ""
+          echo "=========================================="
+          EOF
+          chmod +x /home/developer/welcome.sh
+          
+          # Create utility scripts
+          cat > /home/developer/test-apps << 'EOF'
+          #!/bin/bash
+          echo "Testing Application Endpoints..."
+          for url in "$REACT_FRONTEND_URL" "$VUE_FRONTEND_URL" "$ANGULAR_FRONTEND_URL" "$NODEJS_BACKEND_URL" "$DJANGO_BACKEND_URL"; do
+            echo -n "Testing $url: "
+            if curl -k -s -f "$url" > /dev/null; then
+              echo "✅ OK"
+            else
+              echo "❌ FAILED"
+            fi
+          done
+          EOF
+          chmod +x /home/developer/test-apps
+          
+          # Add welcome to bashrc
+          echo '/home/developer/welcome.sh' >> /home/developer/.bashrc
+          
+          chown -R developer:developer /home/developer
+          
+          # Start SSH daemon
+          echo "Starting SSH daemon..."
+          /usr/sbin/sshd -D -f /etc/ssh/sshd_config
+        volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          tcpSocket:
+            port: 2222
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 2222
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: tmp-volume
+        emptyDir: {}

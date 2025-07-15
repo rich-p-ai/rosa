@@ -1,0 +1,403 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: react-frontend-ssh
+  namespace: react-frontend
+  labels:
+    app: react-frontend-ssh
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: react-frontend-ssh
+  template:
+    metadata:
+      labels:
+        app: react-frontend-ssh
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+      # React Web Server Container
+      - name: react-app
+        image: registry.redhat.io/ubi9/nginx-120:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1001
+          seccompProfile:
+            type: RuntimeDefault
+          capabilities:
+            drop:
+            - ALL
+        env:
+        - name: NGINX_LOG_TO_VOLUME
+          value: "1"
+        command: ["/bin/sh"]
+        args: 
+        - "-c"
+        - |
+          mkdir -p /tmp/nginx /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp /var/cache/nginx/fastcgi_temp /var/cache/nginx/uwsgi_temp /var/cache/nginx/scgi_temp
+          echo 'server { listen 8080; server_name _; root /usr/share/nginx/html; index index.html; location / { try_files $uri $uri/ /index.html; } }' > /tmp/nginx.conf
+          nginx -c /tmp/nginx.conf -g 'daemon off; error_log /tmp/error.log; access_log /tmp/access.log; pid /tmp/nginx.pid;'
+        volumeMounts:
+        - name: app-content
+          mountPath: /usr/share/nginx/html
+        - name: tmp-volume
+          mountPath: /tmp
+        - name: var-cache-nginx
+          mountPath: /var/cache/nginx
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      
+      # SSH Server Container
+      - name: ssh-server
+        image: registry.redhat.io/ubi9/ubi:latest
+        ports:
+        - containerPort: 2222
+          name: ssh
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: false
+          runAsUser: 0
+          seccompProfile:
+            type: RuntimeDefault
+          capabilities:
+            add:
+            - SETUID
+            - SETGID
+            - CHOWN
+            - FOWNER
+            - DAC_OVERRIDE
+            drop:
+            - ALL
+        command: ["/bin/bash"]
+        args: 
+        - "-c"
+        - |
+          set -e
+          echo "🚀 Setting up SSH access for React Frontend..."
+          
+          # Install SSH server and tools
+          dnf update -y
+          dnf install -y openssh-server passwd sudo vim nano curl git procps-ng
+          
+          # Create SSH directories
+          mkdir -p /tmp/ssh /etc/ssh /run/sshd
+          
+          # Generate SSH host keys
+          ssh-keygen -t rsa -f /etc/ssh/ssh_host_rsa_key -N ''
+          ssh-keygen -t ecdsa -f /etc/ssh/ssh_host_ecdsa_key -N ''
+          ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key -N ''
+          chmod 600 /etc/ssh/ssh_host_*
+          
+          # Create SSH config
+          cat > /etc/ssh/sshd_config << 'EOF'
+          Port 2222
+          PasswordAuthentication yes
+          PermitRootLogin no
+          AllowUsers admin
+          PidFile /tmp/sshd.pid
+          AuthorizedKeysFile /home/admin/.ssh/authorized_keys
+          HostKey /etc/ssh/ssh_host_rsa_key
+          HostKey /etc/ssh/ssh_host_ecdsa_key
+          HostKey /etc/ssh/ssh_host_ed25519_key
+          UsePAM no
+          Subsystem sftp /usr/libexec/openssh/sftp-server
+          EOF
+          
+          # Create admin user
+          useradd -m -s /bin/bash -u 1001 admin
+          echo "admin:admin" | chpasswd
+          
+          # Setup admin user SSH directory
+          mkdir -p /home/admin/.ssh
+          chmod 700 /home/admin/.ssh
+          touch /home/admin/.ssh/authorized_keys
+          chmod 600 /home/admin/.ssh/authorized_keys
+          chown -R admin:admin /home/admin
+          
+          # Create development environment scripts
+          cat > /home/admin/welcome.sh << 'EOF'
+          #!/bin/bash
+          echo "================================================="
+          echo "🚀 Welcome to React Frontend SSH Access"
+          echo "================================================="
+          echo "Pod: $(hostname)"
+          echo "User: $(whoami)"
+          echo "Namespace: react-frontend"
+          echo ""
+          echo "📁 Shared Volumes:"
+          echo "  /usr/share/nginx/html (React app content)"
+          echo "  /tmp (nginx temporary files)"
+          echo ""
+          echo "🔧 Available Commands:"
+          echo "  edit-react   - Edit React app HTML"
+          echo "  view-logs    - View nginx logs"
+          echo "  test-app     - Test React app"
+          echo ""
+          echo "🌐 React App URL:"
+          echo "  https://react-frontend-route-react-frontend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com"
+          echo "================================================="
+          EOF
+          chmod +x /home/admin/welcome.sh
+          
+          # Create utility scripts
+          cat > /home/admin/edit-react << 'EOF'
+          #!/bin/bash
+          echo "Opening React app HTML for editing..."
+          nano /usr/share/nginx/html/index.html
+          EOF
+          chmod +x /home/admin/edit-react
+          
+          cat > /home/admin/view-logs << 'EOF'
+          #!/bin/bash
+          echo "=== Nginx Access Log ==="
+          tail -20 /tmp/access.log 2>/dev/null || echo "No access log yet"
+          echo ""
+          echo "=== Nginx Error Log ==="
+          tail -20 /tmp/error.log 2>/dev/null || echo "No error log yet"
+          EOF
+          chmod +x /home/admin/view-logs
+          
+          cat > /home/admin/test-app << 'EOF'
+          #!/bin/bash
+          echo "Testing React app locally..."
+          curl -s http://localhost:8080 | head -10
+          EOF
+          chmod +x /home/admin/test-app
+          
+          # Add welcome script to bashrc
+          echo '/home/admin/welcome.sh' >> /home/admin/.bashrc
+          echo 'export PS1="\[\033[01;32m\]admin@react-pod\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> /home/admin/.bashrc
+          
+          # Fix ownership
+          chown -R admin:admin /home/admin
+          
+          # Start SSH daemon
+          echo "🔑 Starting SSH daemon on port 2222..."
+          echo "   Username: admin"
+          echo "   Password: admin"
+          /usr/sbin/sshd -D -f /etc/ssh/sshd_config
+        volumeMounts:
+        - name: app-content
+          mountPath: /usr/share/nginx/html
+        - name: tmp-volume
+          mountPath: /tmp
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          tcpSocket:
+            port: 2222
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          tcpSocket:
+            port: 2222
+          initialDelaySeconds: 30
+          periodSeconds: 10
+
+      # Init Container to create React content
+      initContainers:
+      - name: react-builder
+        image: registry.redhat.io/ubi9/nodejs-18:latest
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1001
+          seccompProfile:
+            type: RuntimeDefault
+          capabilities:
+            drop:
+            - ALL
+        command: ["/bin/sh"]
+        args: 
+        - "-c"
+        - |
+          cat > /usr/share/nginx/html/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>React Frontend - ROSA Deployment</title>
+              <style>
+                  * { margin: 0; padding: 0; box-sizing: border-box; }
+                  body {
+                      font-family: 'Arial', sans-serif;
+                      background: linear-gradient(135deg, #61dafb 0%, #21759b 100%);
+                      min-height: 100vh;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                  }
+                  .container {
+                      background: white;
+                      padding: 40px;
+                      border-radius: 16px;
+                      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                      max-width: 800px;
+                      width: 90%;
+                      text-align: center;
+                  }
+                  .logo { font-size: 48px; margin-bottom: 20px; }
+                  h1 { color: #61dafb; font-size: 2.5em; margin-bottom: 20px; }
+                  .subtitle { color: #666; font-size: 1.2em; margin-bottom: 30px; }
+                  .features {
+                      display: grid;
+                      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                      gap: 20px;
+                      margin: 30px 0;
+                  }
+                  .feature {
+                      background: #f8f9fa;
+                      padding: 20px;
+                      border-radius: 8px;
+                      border-left: 4px solid #61dafb;
+                  }
+                  .feature h3 { color: #333; margin-bottom: 10px; }
+                  .ssh-info {
+                      background: #e3f2fd;
+                      padding: 20px;
+                      border-radius: 8px;
+                      margin: 20px 0;
+                      text-align: left;
+                  }
+                  .ssh-info h3 { color: #1976d2; margin-bottom: 15px; }
+                  .ssh-command {
+                      background: #263238;
+                      color: #4fc3f7;
+                      padding: 10px;
+                      border-radius: 4px;
+                      font-family: 'Courier New', monospace;
+                      font-size: 14px;
+                      margin: 10px 0;
+                  }
+                  .api-links {
+                      background: #f3e5f5;
+                      padding: 20px;
+                      border-radius: 8px;
+                      margin: 20px 0;
+                  }
+                  .api-links h3 { color: #7b1fa2; margin-bottom: 15px; }
+                  .api-links a {
+                      color: #1976d2;
+                      text-decoration: none;
+                      margin: 0 10px;
+                  }
+                  .api-links a:hover { text-decoration: underline; }
+                  .footer {
+                      margin-top: 30px;
+                      color: #666;
+                      font-style: italic;
+                  }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <div class="logo">🚀</div>
+                  <h1>React Frontend with SSH</h1>
+                  <p class="subtitle">Deployed on Red Hat OpenShift Service on AWS (ROSA)</p>
+                  
+                  <div class="features">
+                      <div class="feature">
+                          <h3>🎯 Modern React</h3>
+                          <p>Built with modern React patterns and deployed using Red Hat UBI9 containers</p>
+                      </div>
+                      <div class="feature">
+                          <h3>🔧 SSH Access</h3>
+                          <p>Direct SSH access to pods for development and debugging</p>
+                      </div>
+                      <div class="feature">
+                          <h3>☁️ Cloud Native</h3>
+                          <p>Kubernetes-native deployment with GitOps automation</p>
+                      </div>
+                  </div>
+
+                  <div class="ssh-info">
+                      <h3>🔑 SSH Access Information</h3>
+                      <p><strong>Username:</strong> admin</p>
+                      <p><strong>Password:</strong> admin</p>
+                      <p><strong>Port:</strong> 30222 (NodePort)</p>
+                      <div class="ssh-command">
+                          # Connect via SSH NodePort<br>
+                          ssh -p 30222 admin@&lt;node-ip&gt;
+                      </div>
+                      <div class="ssh-command">
+                          # Get node IP<br>
+                          oc get nodes -o wide
+                      </div>
+                      <p style="margin-top: 10px;"><em>Once connected, run: edit-react, view-logs, test-app</em></p>
+                  </div>
+
+                  <div class="api-links">
+                      <h3>🔗 Related Services</h3>
+                      <a href="https://nodejs-backend-route-nodejs-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com" target="_blank">Node.js Backend</a>
+                      <a href="https://django-backend-route-django-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com" target="_blank">Django Backend</a>
+                  </div>
+
+                  <div class="footer">
+                      <p>Powered by Red Hat UBI9 + OpenShift + GitOps</p>
+                      <p>Pod: <span id="pod-name">Loading...</span></p>
+                  </div>
+              </div>
+
+              <script>
+                  document.getElementById('pod-name').textContent = window.location.hostname || 'react-frontend-pod';
+                  
+                  document.querySelectorAll('.feature').forEach(feature => {
+                      feature.addEventListener('click', function() {
+                          this.style.transform = 'scale(0.95)';
+                          setTimeout(() => {
+                              this.style.transform = 'scale(1)';
+                          }, 150);
+                      });
+                  });
+              </script>
+          </body>
+          </html>
+          EOF
+          echo "✅ React app content created successfully!"
+        volumeMounts:
+        - name: app-content
+          mountPath: /usr/share/nginx/html
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "100m"
+
+      volumes:
+      - name: app-content
+        emptyDir: {}
+      - name: tmp-volume
+        emptyDir: {}
+      - name: var-cache-nginx
+        emptyDir: {}

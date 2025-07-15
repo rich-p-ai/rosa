@@ -1,0 +1,79 @@
+project: default
+destination:
+  server: https://kubernetes.default.svc
+
+applications:
+  react-frontend:
+    annotations:
+      argocd.argoproj.io/sync-wave: '10'
+    destination:
+      namespace: react-frontend
+    source:
+      path: apps/react-frontend
+      targetRevision: HEAD
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+      syncOptions:
+        - CreateNamespace=true
+
+  vue-frontend:
+    annotations:
+      argocd.argoproj.io/sync-wave: '10'
+    destination:
+      namespace: vue-frontend
+    source:
+      path: apps/vue-frontend
+      targetRevision: HEAD
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+      syncOptions:
+        - CreateNamespace=true
+
+  angular-frontend:
+    annotations:
+      argocd.argoproj.io/sync-wave: '10'
+    destination:
+      namespace: angular-frontend
+    source:
+      path: apps/angular-frontend
+      targetRevision: HEAD
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+      syncOptions:
+        - CreateNamespace=true
+
+  nodejs-backend:
+    annotations:
+      argocd.argoproj.io/sync-wave: '5'
+    destination:
+      namespace: nodejs-backend
+    source:
+      path: apps/nodejs-backend
+      targetRevision: HEAD
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+      syncOptions:
+        - CreateNamespace=true
+
+  django-backend:
+    annotations:
+      argocd.argoproj.io/sync-wave: '5'
+    destination:
+      namespace: django-backend
+    source:
+      path: apps/django-backend
+      targetRevision: HEAD
+    syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+      syncOptions:
+        - CreateNamespace=true

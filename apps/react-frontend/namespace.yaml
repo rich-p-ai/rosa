@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: react-frontend
+  labels:
+    app.kubernetes.io/name: react-frontend
+    app.kubernetes.io/part-of: web-applications
+    app.kubernetes.io/managed-by: argocd

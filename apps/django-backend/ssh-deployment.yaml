@@ -1,0 +1,338 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django-backend-ssh
+  namespace: django-backend
+  labels:
+    app: django-backend-ssh
+    app.kubernetes.io/name: django-backend-ssh
+    app.kubernetes.io/part-of: web-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: django-backend-ssh
+  template:
+    metadata:
+      labels:
+        app: django-backend-ssh
+    spec:
+      serviceAccountName: default
+      containers:
+      - name: ssh-server
+        image: registry.redhat.io/ubi9/ubi:latest
+        ports:
+        - containerPort: 22
+          name: ssh
+        env:
+        - name: SSH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: django-backend-ssh-secret
+              key: password
+        - name: SSH_USERNAME
+          value: "developer"
+        command:
+        - /bin/bash
+        - -c
+        - |
+          # Install SSH server and required packages
+          dnf update -y
+          dnf install -y openssh-server passwd sudo vim nano curl git python3 python3-pip
+          
+          # Configure SSH
+          sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+          sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+          echo "ChallengeResponseAuthentication yes" >> /etc/ssh/sshd_config
+          echo "UsePAM yes" >> /etc/ssh/sshd_config
+          
+          # Create developer user
+          useradd -m -s /bin/bash $SSH_USERNAME
+          echo "$SSH_USERNAME:$SSH_PASSWORD" | chpasswd
+          usermod -aG wheel $SSH_USERNAME
+          echo "$SSH_USERNAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$SSH_USERNAME
+          
+          # Setup workspace directory
+          mkdir -p /home/$SSH_USERNAME/workspace/src
+          chown -R $SSH_USERNAME:$SSH_USERNAME /home/$SSH_USERNAME/workspace
+          
+          # Create sample Django files for editing
+          cat > /home/$SSH_USERNAME/workspace/src/settings.py << 'EOF'
+"""
+Django Settings for SSH-Editable Backend
+Edit this file via SSH to customize your Django application!
+SSH Access: ssh developer@django-backend-ssh.django-backend.svc.cluster.local
+"""
+
+import os
+from pathlib import Path
+
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = 'django-ssh-editable-secret-key-change-in-production'
+
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = True
+
+ALLOWED_HOSTS = ['*']
+
+# Application definition
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'rest_framework',
+    'corsheaders',
+]
+
+MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+ROOT_URLCONF = 'urls'
+
+# Database - Edit via SSH
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
+
+# REST Framework configuration
+REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.AllowAny',
+    ],
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ],
+}
+
+# CORS settings
+CORS_ALLOW_ALL_ORIGINS = True
+
+# Static files (CSS, JavaScript, Images)
+STATIC_URL = '/static/'
+STATIC_ROOT = '/home/developer/workspace/src/staticfiles'
+
+# Media files
+MEDIA_URL = '/media/'
+MEDIA_ROOT = '/home/developer/workspace/src/media'
+
+# SSH access information
+SSH_ACCESS_INFO = {
+    'service': 'django-backend-ssh-service',
+    'port': 22,
+    'username': 'developer',
+    'workspace': '/home/developer/workspace/src'
+}
+EOF
+          
+          cat > /home/$SSH_USERNAME/workspace/src/views.py << 'EOF'
+"""
+Django Views for SSH-Editable Backend
+Edit these views via SSH to customize your API responses!
+"""
+
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+import json
+
+@api_view(['GET'])
+def api_root(request):
+    """Main API endpoint - editable via SSH"""
+    return Response({
+        'message': 'Django Backend - ROSA Deployment',
+        'ssh_access': 'ssh developer@django-backend-ssh.django-backend.svc.cluster.local',
+        'status': 'running',
+        'editable': 'This API can be modified through SSH access',
+        'endpoints': [
+            '/api/',
+            '/api/health/',
+            '/api/ssh-info/',
+            '/api/users/',
+            '/api/data/'
+        ]
+    })
+
+@api_view(['GET'])
+def health_check(request):
+    """Health check endpoint"""
+    return Response({
+        'status': 'healthy',
+        'timestamp': str(timezone.now()),
+        'environment': 'ROSA cluster',
+        'ssh_editable': True
+    })
+
+@api_view(['GET'])
+def ssh_info(request):
+    """SSH access information"""
+    return Response({
+        'ssh_service': 'django-backend-ssh-service',
+        'ssh_port': 22,
+        'username': 'developer',
+        'workspace': '/home/developer/workspace/src',
+        'editable_files': [
+            'settings.py',
+            'views.py',
+            'urls.py',
+            'models.py'
+        ]
+    })
+
+@api_view(['GET', 'POST'])
+def users_api(request):
+    """User management API - editable via SSH"""
+    if request.method == 'GET':
+        return Response({
+            'users': [
+                {'id': 1, 'name': 'John Doe', 'role': 'admin'},
+                {'id': 2, 'name': 'Jane Smith', 'role': 'user'}
+            ],
+            'ssh_editable': True,
+            'note': 'This endpoint can be modified via SSH'
+        })
+    elif request.method == 'POST':
+        data = request.data
+        return Response({
+            'message': 'User created successfully',
+            'user': {
+                'id': 999,
+                'name': data.get('name', 'Unknown'),
+                'role': data.get('role', 'user')
+            },
+            'ssh_note': 'This response can be customized via SSH'
+        })
+
+@api_view(['GET'])
+def data_api(request):
+    """Data processing API"""
+    return Response({
+        'data': 'Sample data from Django backend',
+        'processed_at': str(timezone.now()),
+        'ssh_access': 'Available for real-time editing',
+        'framework': 'Django REST Framework'
+    })
+EOF
+          
+          cat > /home/$SSH_USERNAME/workspace/src/urls.py << 'EOF'
+"""
+Django URLs Configuration - Edit via SSH
+"""
+
+from django.contrib import admin
+from django.urls import path, include
+from . import views
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('api/', views.api_root, name='api_root'),
+    path('api/health/', views.health_check, name='health_check'),
+    path('api/ssh-info/', views.ssh_info, name='ssh_info'),
+    path('api/users/', views.users_api, name='users_api'),
+    path('api/data/', views.data_api, name='data_api'),
+]
+EOF
+          
+          cat > /home/$SSH_USERNAME/workspace/src/requirements.txt << 'EOF'
+Django==4.2.7
+djangorestframework==3.14.0
+django-cors-headers==4.3.1
+gunicorn==21.2.0
+psycopg2-binary==2.9.7
+EOF
+          
+          cat > /home/$SSH_USERNAME/workspace/src/README.md << 'EOF'
+# Django Backend with SSH Access
+
+## SSH Access Information
+- **Service**: django-backend-ssh-service
+- **Port**: 22
+- **Username**: developer
+- **Workspace**: /home/developer/workspace/src
+
+## Editable Files
+- `settings.py` - Django configuration
+- `views.py` - API views and logic
+- `urls.py` - URL routing
+- `models.py` - Data models
+- `requirements.txt` - Python dependencies
+
+## Usage
+1. SSH into the container: `ssh developer@django-backend-ssh-service:22`
+2. Navigate to workspace: `cd /home/developer/workspace/src`
+3. Edit files with vim/nano
+4. Changes take effect immediately (restart if needed)
+
+## API Endpoints
+- `GET /api/` - Application info
+- `GET /api/health/` - Health check
+- `GET /api/ssh-info/` - SSH access information
+- `GET /api/users/` - User management
+- `POST /api/users/` - Create user
+- `GET /api/data/` - Data processing
+
+## Development
+- Python virtual environment available
+- Django management commands available
+- Real-time code editing via SSH
+EOF
+          
+          chown -R $SSH_USERNAME:$SSH_USERNAME /home/$SSH_USERNAME/workspace
+          
+          # Generate SSH host keys
+          ssh-keygen -A
+          
+          # Start SSH daemon
+          exec /usr/sbin/sshd -D
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+        securityContext:
+          runAsNonRoot: false
+          allowPrivilegeEscalation: true
+        livenessProbe:
+          tcpSocket:
+            port: 22
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: 22
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/developer/workspace
+        - name: ssh-config-volume
+          mountPath: /etc/ssh/sshd_config.d
+      volumes:
+      - name: workspace-volume
+        emptyDir: {}
+      - name: ssh-config-volume
+        emptyDir: {}

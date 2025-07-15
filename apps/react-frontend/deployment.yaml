@@ -1,0 +1,179 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: react-frontend
+  namespace: react-frontend
+  labels:
+    app: react-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: react-frontend
+  template:
+    metadata:
+      labels:
+        app: react-frontend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+      - name: react-app
+        image: registry.redhat.io/ubi9/nginx-120:latest
+        ports:
+        - containerPort: 8080
+        - containerPort: 2222
+          name: ssh
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+          capabilities:
+            drop:
+            - ALL
+        env:
+        - name: NGINX_LOG_TO_VOLUME
+          value: "1"
+        command: ["/bin/sh"]
+        args: ["-c", "mkdir -p /tmp/nginx /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp /var/cache/nginx/fastcgi_temp /var/cache/nginx/uwsgi_temp /var/cache/nginx/scgi_temp && echo 'server { listen 8080; server_name _; root /usr/share/nginx/html; index index.html; location / { try_files $uri $uri/ /index.html; } }' > /tmp/nginx.conf && nginx -c /tmp/nginx.conf -g 'daemon off; error_log /tmp/error.log; access_log /tmp/access.log; pid /tmp/nginx.pid;'"]
+        volumeMounts:
+        - name: app-content
+          mountPath: /usr/share/nginx/html
+        - name: tmp-volume
+          mountPath: /tmp
+        - name: var-cache-nginx
+          mountPath: /var/cache/nginx
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      - name: ssh-server
+        image: registry.redhat.io/ubi9/ubi:latest
+        ports:
+        - containerPort: 2222
+          name: ssh
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+          capabilities:
+            drop:
+            - ALL
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          set -e
+          echo "Setting up SSH access for React Frontend..."
+          
+          # Install SSH server
+          microdnf update -y
+          microdnf install -y openssh-server passwd sudo vim nano curl git procps-ng
+          
+          # Generate SSH host keys
+          ssh-keygen -A -f /tmp/ssh-keys
+          mkdir -p /etc/ssh
+          cp /tmp/ssh-keys/ssh_host_* /etc/ssh/
+          
+          # Create SSH config for non-root user
+          cat > /etc/ssh/sshd_config << 'EOF'
+          Port 2222
+          PasswordAuthentication yes
+          PermitRootLogin no
+          AllowUsers admin
+          PidFile /tmp/sshd.pid
+          HostKey /etc/ssh/ssh_host_rsa_key
+          HostKey /etc/ssh/ssh_host_ecdsa_key
+          HostKey /etc/ssh/ssh_host_ed25519_key
+          EOF
+          
+          # Create admin user
+          useradd -m -s /bin/bash -u 1001 admin || true
+          echo "admin:admin" | chpasswd
+          
+          # Setup admin user environment
+          mkdir -p /home/admin/.ssh
+          chmod 700 /home/admin/.ssh
+          chown -R admin:admin /home/admin
+          
+          # Create welcome script
+          cat > /home/admin/welcome.sh << 'EOF'
+          #!/bin/bash
+          echo "================================="
+          echo "🚀 React Frontend SSH Access"
+          echo "================================="
+          echo "Application: React Frontend"
+          echo "Pod: $(hostname)"
+          echo "Namespace: react-frontend"
+          echo ""
+          echo "App URL: https://react-frontend-route-react-frontend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com"
+          echo ""
+          echo "Shared volumes:"
+          echo "- /usr/share/nginx/html (web content)"
+          echo "- /tmp (nginx temp files)"
+          echo "================================="
+          EOF
+          chmod +x /home/admin/welcome.sh
+          echo '/home/admin/welcome.sh' >> /home/admin/.bashrc
+          
+          # Start SSH daemon
+          echo "Starting SSH daemon on port 2222..."
+          /usr/sbin/sshd -D -f /etc/ssh/sshd_config
+        volumeMounts:
+        - name: app-content
+          mountPath: /usr/share/nginx/html
+        - name: tmp-volume
+          mountPath: /tmp
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      initContainers:
+      - name: react-builder
+        image: registry.redhat.io/ubi9/nodejs-18:latest
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+          capabilities:
+            drop:
+            - ALL
+        command: ["/bin/sh"]
+        args: ["-c", "echo '<!DOCTYPE html><html><head><title>React Frontend</title><style>body{font-family:Arial;margin:40px;background:#f5f5f5}h1{color:#61dafb}.container{background:white;padding:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}.api-section{margin-top:20px;padding:15px;background:#e3f2fd;border-radius:4px}</style></head><body><div class=\"container\"><h1>🚀 React Frontend</h1><p>Welcome to the React frontend application deployed on Red Hat OpenShift!</p><div class=\"api-section\"><h3>Backend APIs:</h3><p><strong>Node.js:</strong> <a href=\"https://nodejs-backend-route-nodejs-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com\" target=\"_blank\">nodejs-backend-route-nodejs-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com</a></p><p><strong>Django:</strong> <a href=\"https://django-backend-route-django-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com\" target=\"_blank\">django-backend-route-django-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com</a></p></div><p><em>Powered by Red Hat UBI9 + OpenShift + GitOps</em></p></div></body></html>' > /usr/share/nginx/html/index.html"]
+        volumeMounts:
+        - name: app-content
+          mountPath: /usr/share/nginx/html
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+      volumes:
+      - name: app-content
+        emptyDir: {}
+      - name: tmp-volume
+        emptyDir: {}
+      - name: var-cache-nginx
+        emptyDir: {}

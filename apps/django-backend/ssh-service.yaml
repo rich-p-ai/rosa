@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: django-backend-ssh-service
+  namespace: django-backend
+  labels:
+    app: django-backend-ssh
+    app.kubernetes.io/name: django-backend-ssh
+    app.kubernetes.io/part-of: web-applications
+  annotations:
+    argocd.argoproj.io/sync-wave: "15"
+spec:
+  type: ClusterIP
+  ports:
+  - name: ssh
+    port: 22
+    targetPort: 22
+    protocol: TCP
+  selector:
+    app: django-backend-ssh

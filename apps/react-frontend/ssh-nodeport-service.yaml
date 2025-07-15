@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: react-frontend-ssh-nodeport
+  namespace: react-frontend
+  labels:
+    app: react-frontend-ssh
+spec:
+  type: NodePort
+  ports:
+  - port: 2222
+    targetPort: 2222
+    nodePort: 30222
+    protocol: TCP
+    name: ssh
+  selector:
+    app: react-frontend-ssh

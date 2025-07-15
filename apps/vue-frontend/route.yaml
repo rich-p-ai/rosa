@@ -1,0 +1,18 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: vue-frontend-route
+  namespace: vue-frontend
+  labels:
+    app: vue-frontend
+spec:
+  host: vue.apps.p-ai.net
+  to:
+    kind: Service
+    name: vue-frontend-service
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None

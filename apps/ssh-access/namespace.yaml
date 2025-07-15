@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ssh-access
+  labels:
+    app.kubernetes.io/name: ssh-access
+    app.kubernetes.io/part-of: rosa-deployment
+    app.kubernetes.io/managed-by: argocd
