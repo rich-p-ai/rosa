@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: react-frontend-ssh
+  namespace: react-frontend
+  labels:
+    app: react-frontend-ssh
+    app.kubernetes.io/name: react-frontend-ssh
+    app.kubernetes.io/part-of: web-applications
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: react-frontend-ssh
+      app.kubernetes.io/name: react-frontend-ssh
+      app.kubernetes.io/part-of: web-applications
+  template:
+    metadata:
+      labels:
+        app: react-frontend-ssh
+        app.kubernetes.io/name: react-frontend-ssh
+        app.kubernetes.io/part-of: web-applications
+    spec:
+      containers:
+      # React Web Server Container
+      - name: react-app
+        image: registry.redhat.io/ubi9/nginx-120:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+          capabilities:
+            drop:
+            - ALL
+        env:
+        - name: NGINX_LOG_TO_VOLUME
+          value: "1"
+        command: ["/bin/sh"]
+        args: 
+        - "-c"
+        - |
+          mkdir -p /tmp/nginx /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp /var/cache/nginx/fastcgi_temp /var/cache/nginx/uwsgi_temp /var/cache/nginx/scgi_temp
+          echo '<html><body><h1>React Frontend</h1><p>Deployed on ROSA with GitOps!</p></body></html>' > /usr/share/nginx/html/index.html
+          echo 'server { listen 8080; server_name _; root /usr/share/nginx/html; index index.html; location / { try_files $uri $uri/ /index.html; } }' > /tmp/nginx.conf
+          nginx -c /tmp/nginx.conf -g 'daemon off; error_log /tmp/error.log; access_log /tmp/access.log; pid /tmp/nginx.pid;'
+        volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+        - name: var-cache-nginx
+          mountPath: /var/cache/nginx
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: tmp-volume
+        emptyDir: {}
+      - name: var-cache-nginx
+        emptyDir: {}
