@@ -30,6 +30,8 @@ spec:
     kind: Namespace
   - group: 'route.openshift.io'
     kind: Route
+  - group: 'security.openshift.io'
+    kind: SecurityContextConstraints
   namespaceResourceWhitelist:
   - group: ''
     kind: Service
@@ -39,10 +41,16 @@ spec:
     kind: ConfigMap
   - group: ''
     kind: PersistentVolumeClaim
+  - group: ''
+    kind: ServiceAccount
   - group: 'apps'
     kind: Deployment
   - group: 'route.openshift.io'
     kind: Route
+  - group: 'rbac.authorization.k8s.io'
+    kind: RoleBinding
+  - group: 'rbac.authorization.k8s.io'
+    kind: Role
   roles:
   - name: admin
     description: Admin access to web applications

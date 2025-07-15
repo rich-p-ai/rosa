@@ -1,0 +1,119 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vue-frontend
+  namespace: vue-frontend
+  labels:
+    app: vue-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vue-frontend
+  template:
+    metadata:
+      labels:
+        app: vue-frontend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+      - name: vue-app
+        image: registry.redhat.io/ubi9/nginx-120:latest
+        ports:
+        - containerPort: 8080
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+          capabilities:
+            drop:
+            - ALL
+        command: ["/bin/sh"]
+        args: 
+        - "-c"
+        - |
+          mkdir -p /tmp/html /tmp/nginx /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp /var/cache/nginx/fastcgi_temp /var/cache/nginx/uwsgi_temp /var/cache/nginx/scgi_temp
+          
+          echo '<!DOCTYPE html>
+          <html>
+          <head>
+            <title>Vue Frontend</title>
+            <style>
+              body { font-family: Arial; margin: 40px; background: #f5f5f5; }
+              h1 { color: #4fc08d; }
+              .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+              .api-section { margin-top: 20px; padding: 15px; background: #e8f5e8; border-radius: 4px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>⚡ Vue Frontend</h1>
+              <p>Welcome to the Vue.js frontend application deployed on Red Hat OpenShift!</p>
+              <div class="api-section">
+                <h3>Backend APIs:</h3>
+                <p><strong>Node.js:</strong> <a href="https://nodejs-backend-route-nodejs-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com" target="_blank">nodejs-backend-route-nodejs-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com</a></p>
+                <p><strong>Django:</strong> <a href="https://django-backend-route-django-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com" target="_blank">django-backend-route-django-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com</a></p>
+              </div>
+              <p><em>Powered by Red Hat UBI9 + OpenShift + GitOps</em></p>
+            </div>
+          </body>
+          </html>' > /tmp/html/index.html
+          
+          cat > /tmp/nginx.conf << 'NGINX_EOF'
+          http {
+              include       /etc/nginx/mime.types;
+              default_type  application/octet-stream;
+              sendfile        on;
+              keepalive_timeout  65;
+              access_log /tmp/access.log;
+              error_log /tmp/error.log;
+              
+              server {
+                  listen 8080;
+                  server_name _;
+                  root /tmp/html;
+                  index index.html;
+                  
+                  location / {
+                      try_files $uri $uri/ /index.html;
+                  }
+              }
+          }
+          
+          events {
+              worker_connections  1024;
+          }
+          NGINX_EOF
+          
+          nginx -c /tmp/nginx.conf -g 'daemon off; pid /tmp/nginx.pid;'
+        volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+        - name: var-cache-nginx
+          mountPath: /var/cache/nginx
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: tmp-volume
+        emptyDir: {}
+      - name: var-cache-nginx
+        emptyDir: {}

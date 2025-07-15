@@ -1,0 +1,53 @@
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: react-ssh-scc
+  labels:
+    app: react-frontend-ssh
+    app.kubernetes.io/name: react-frontend-ssh
+    app.kubernetes.io/part-of: web-applications
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegeEscalation: false
+allowPrivilegedContainer: false
+allowedCapabilities:
+- SETUID
+- SETGID
+- CHOWN
+- FOWNER
+- DAC_OVERRIDE
+defaultAddCapabilities: null
+fsGroup:
+  type: MustRunAs
+  ranges:
+  - min: 1
+    max: 65535
+readOnlyRootFilesystem: false
+requiredDropCapabilities:
+- KILL
+- MKNOD
+- SETPCAP
+- SYS_CHROOT
+runAsUser:
+  type: MustRunAsRange
+  uidRangeMin: 1
+  uidRangeMax: 65535
+seLinuxContext:
+  type: MustRunAs
+supplementalGroups:
+  type: MustRunAs
+  ranges:
+  - min: 1
+    max: 65535
+users: []
+groups: []
+volumes:
+- configMap
+- downwardAPI
+- emptyDir
+- persistentVolumeClaim
+- projected
+- secret
