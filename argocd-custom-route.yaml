@@ -1,0 +1,21 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: argocd-custom-route
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/name: openshift-gitops-server
+    app.kubernetes.io/part-of: argocd
+spec:
+  host: argocd.apps.p-ai.net
+  to:
+    kind: Service
+    name: openshift-gitops-server
+    weight: 100
+  port:
+    targetPort: https
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
