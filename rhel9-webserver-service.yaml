@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rhel9-webserver-http
+  namespace: webserver
+  labels:
+    app: webserver
+spec:
+  type: NodePort
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    nodePort: 30080
+    protocol: TCP
+  - name: ssh
+    port: 22
+    targetPort: 22
+    nodePort: 30022
+    protocol: TCP
+  selector:
+    vm.kubevirt.io/name: rhel9-webserver
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: rhel9-webserver-route
+  namespace: default
+  labels:
+    app: webserver
+spec:
+  to:
+    kind: Service
+    name: rhel9-webserver-http
+  port:
+    targetPort: http
+  wildcardPolicy: None

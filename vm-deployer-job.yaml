@@ -1,0 +1,213 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vm-bare-metal-deployer
+  namespace: webserver
+  labels:
+    app: vm-deployer
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: vm-deployer
+    spec:
+      serviceAccountName: vm-deployer
+      restartPolicy: OnFailure
+      containers:
+      - name: deployer
+        image: registry.redhat.io/ubi8/ubi:latest
+        command: ["/bin/bash"]
+        args:
+          - -c
+          - |
+            # Install required tools
+            dnf update -y
+            dnf install -y curl
+            
+            # Download and install oc CLI
+            curl -L https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz | tar xz -C /tmp
+            mv /tmp/oc /usr/local/bin/
+            chmod +x /usr/local/bin/oc
+            
+            # Wait for bare metal node
+            echo "Waiting for bare metal node to become available..."
+            while true; do
+              READY_NODES=$(oc get nodes -l "node.kubernetes.io/instance-type=m5.metal" --no-headers 2>/dev/null | grep -c " Ready " || echo "0")
+              
+              if [ "$READY_NODES" -gt 0 ]; then
+                echo "Found $READY_NODES ready bare metal node(s). Deploying VM..."
+                
+                # Check if VM already exists
+                if oc get vm rhel9-webserver-bare-metal -n webserver &>/dev/null; then
+                  echo "VM already exists. Skipping deployment."
+                  exit 0
+                fi
+                
+                # Deploy the VM
+                cat <<EOF | oc apply -f -
+            apiVersion: kubevirt.io/v1
+            kind: VirtualMachine
+            metadata:
+              name: rhel9-webserver-bare-metal
+              namespace: webserver
+              labels:
+                app: webserver
+            spec:
+              runStrategy: Always
+              dataVolumeTemplates:
+              - metadata:
+                  name: rhel9-webserver-rootdisk-bm
+                spec:
+                  pvc:
+                    accessModes:
+                    - ReadWriteOnce
+                    resources:
+                      requests:
+                        storage: 30Gi
+                    storageClassName: gp3-csi
+                  sourceRef:
+                    kind: DataSource
+                    name: rhel9
+                    namespace: openshift-virtualization-os-images
+              template:
+                metadata:
+                  labels:
+                    kubevirt.io/domain: rhel9-webserver-bare-metal
+                    kubevirt.io/size: small
+                    vm.kubevirt.io/name: rhel9-webserver-bare-metal
+                spec:
+                  domain:
+                    cpu:
+                      cores: 2
+                      sockets: 1
+                      threads: 1
+                    devices:
+                      autoattachPodInterface: false
+                      autoattachSerialConsole: true
+                      autoattachGraphicsDevice: true
+                      disks:
+                      - name: rootdisk
+                        disk:
+                          bus: virtio
+                      - name: cloudinitdisk
+                        disk:
+                          bus: virtio
+                      interfaces:
+                      - name: default
+                        masquerade: {}
+                        model: virtio
+                    features:
+                      acpi: {}
+                    firmware:
+                      bootloader:
+                        efi:
+                          secureBoot: false
+                    machine:
+                      type: pc-q35-rhel9.4.0
+                    memory:
+                      guest: 4Gi
+                    resources:
+                      requests:
+                        memory: 4Gi
+                        cpu: "2"
+                  nodeSelector:
+                    node.kubernetes.io/instance-type: m5.metal
+                  networks:
+                  - name: default
+                    pod: {}
+                  terminationGracePeriodSeconds: 180
+                  volumes:
+                  - name: rootdisk
+                    dataVolume:
+                      name: rhel9-webserver-rootdisk-bm
+                  - name: cloudinitdisk
+                    cloudInitNoCloud:
+                      userData: |
+                        #cloud-config
+                        user: admin
+                        password: redhat123
+                        chpasswd: { expire: False }
+                        ssh_pwauth: True
+                        package_update: true
+                        packages:
+                          - httpd
+                          - curl
+                          - wget
+                          - vim
+                          - firewalld
+                        runcmd:
+                          - systemctl enable httpd
+                          - systemctl start httpd
+                          - systemctl enable firewalld
+                          - systemctl start firewalld
+                          - firewall-cmd --permanent --add-service=http
+                          - firewall-cmd --permanent --add-service=https
+                          - firewall-cmd --permanent --add-service=ssh
+                          - firewall-cmd --reload
+                          - echo "<h1>Welcome to RHEL 9 Web Server on Bare Metal</h1>" > /var/www/html/index.html
+                          - echo "<p>Server started on \$(date)</p>" >> /var/www/html/index.html
+                          - echo "<p>Hostname: \$(hostname)</p>" >> /var/www/html/index.html
+                          - echo "<p>IP Address: \$(hostname -I)</p>" >> /var/www/html/index.html
+                          - chown apache:apache /var/www/html/index.html
+                          - systemctl restart httpd
+            EOF
+                
+                echo "VM deployment initiated. Waiting for VM to be ready..."
+                oc wait --for=condition=Ready vm/rhel9-webserver-bare-metal -n webserver --timeout=600s
+                echo "VM is ready!"
+                
+                # Show VM status
+                oc get vm rhel9-webserver-bare-metal -n webserver
+                oc get vmi rhel9-webserver-bare-metal -n webserver
+                
+                exit 0
+              else
+                echo "No ready bare metal nodes found. Checking again in 60 seconds..."
+                sleep 60
+              fi
+            done
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vm-deployer
+  namespace: webserver
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vm-deployer-role
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["kubevirt.io"]
+  resources: ["virtualmachines", "virtualmachineinstances", "datavolumetemplates"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["cdi.kubevirt.io"]
+  resources: ["datavolumes", "datasources"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vm-deployer-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vm-deployer-role
+subjects:
+- kind: ServiceAccount
+  name: vm-deployer
+  namespace: webserver

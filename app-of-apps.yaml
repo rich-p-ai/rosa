@@ -1,0 +1,179 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: web-applications-app-of-apps
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: web-applications
+    app.kubernetes.io/part-of: rosa-deployment
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rich-p-ai/apps.git
+    targetRevision: HEAD
+    path: apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openshift-gitops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: react-frontend-app
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: react-frontend
+    app.kubernetes.io/part-of: web-applications
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rich-p-ai/apps.git
+    targetRevision: HEAD
+    path: apps/react-frontend
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: react-frontend
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vue-frontend-app
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: vue-frontend
+    app.kubernetes.io/part-of: web-applications
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rich-p-ai/apps.git
+    targetRevision: HEAD
+    path: apps/vue-frontend
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vue-frontend
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: angular-frontend-app
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: angular-frontend
+    app.kubernetes.io/part-of: web-applications
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rich-p-ai/apps.git
+    targetRevision: HEAD
+    path: apps/angular-frontend
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: angular-frontend
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nodejs-backend-app
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: nodejs-backend
+    app.kubernetes.io/part-of: web-applications
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rich-p-ai/apps.git
+    targetRevision: HEAD
+    path: apps/nodejs-backend
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: nodejs-backend
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: django-backend-app
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: django-backend
+    app.kubernetes.io/part-of: web-applications
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rich-p-ai/apps.git
+    targetRevision: HEAD
+    path: apps/django-backend
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: django-backend
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: github-apps-repo-test
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: github-apps-repo-test
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rich-p-ai/apps.git
+    targetRevision: HEAD
+    path: .
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true

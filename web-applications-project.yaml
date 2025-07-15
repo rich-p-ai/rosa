@@ -1,0 +1,55 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: web-applications
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: web-applications-project
+    app.kubernetes.io/part-of: rosa-deployment
+spec:
+  description: Project for ROSA Web Applications
+  sourceRepos:
+  - 'https://github.com/rich-p-ai/apps.git'
+  destinations:
+  - namespace: 'react-frontend'
+    server: https://kubernetes.default.svc
+  - namespace: 'vue-frontend'
+    server: https://kubernetes.default.svc
+  - namespace: 'angular-frontend'
+    server: https://kubernetes.default.svc
+  - namespace: 'nodejs-backend'
+    server: https://kubernetes.default.svc
+  - namespace: 'django-backend'
+    server: https://kubernetes.default.svc
+  - namespace: 'ssh-access'
+    server: https://kubernetes.default.svc
+  - namespace: 'openshift-gitops'
+    server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+  - group: 'route.openshift.io'
+    kind: Route
+  namespaceResourceWhitelist:
+  - group: ''
+    kind: Service
+  - group: ''
+    kind: Secret
+  - group: ''
+    kind: ConfigMap
+  - group: ''
+    kind: PersistentVolumeClaim
+  - group: 'apps'
+    kind: Deployment
+  - group: 'route.openshift.io'
+    kind: Route
+  roles:
+  - name: admin
+    description: Admin access to web applications
+    policies:
+    - p, proj:web-applications:admin, applications, *, web-applications/*, allow
+    - p, proj:web-applications:admin, repositories, *, *, allow
+    groups:
+    - system:cluster-admins
+    - cluster-admins
+    - rich@p-ai.net

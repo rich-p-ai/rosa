@@ -1,0 +1,114 @@
+# Multi-project SSH access using TCP LoadBalancer with port-based routing
+# Each project gets a unique port on the same load balancer
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: haproxy-ssh-config
+  namespace: ssh-gateway
+data:
+  haproxy.cfg: |
+    global
+        daemon
+        log stdout local0
+        maxconn 4096
+    
+    defaults
+        mode tcp
+        timeout connect 5000ms
+        timeout client 300000ms
+        timeout server 300000ms
+        log global
+        option tcplog
+    
+    # Frontend for SSH connections
+    frontend ssh_frontend
+        bind *:22
+        
+        # Route based on destination port
+        use_backend project_1 if { dst_port 2201 }
+        use_backend project_2 if { dst_port 2202 }
+        use_backend project_3 if { dst_port 2203 }
+        # ... continue for all projects
+        
+        default_backend default_ssh
+    
+    # Backends for each project
+    backend project_1
+        server project1 project-1-ssh.project-1.svc.cluster.local:22 check
+    
+    backend project_2
+        server project2 project-2-ssh.project-2.svc.cluster.local:22 check
+    
+    backend project_3
+        server project3 project-3-ssh.project-3.svc.cluster.local:22 check
+    
+    backend default_ssh
+        server default ssh-bastion.ssh-gateway.svc.cluster.local:22 check
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ssh-tcp-proxy
+  namespace: ssh-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ssh-tcp-proxy
+  template:
+    metadata:
+      labels:
+        app: ssh-tcp-proxy
+    spec:
+      containers:
+      - name: haproxy
+        image: haproxy:2.8-alpine
+        ports:
+        # SSH ports for each project (2201-2400 for 200 projects)
+        - containerPort: 22
+        - containerPort: 2201
+        - containerPort: 2202
+        - containerPort: 2203
+        # ... add more ports as needed
+        volumeMounts:
+        - name: config
+          mountPath: /usr/local/etc/haproxy/haproxy.cfg
+          subPath: haproxy.cfg
+        livenessProbe:
+          tcpSocket:
+            port: 22
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: config
+        configMap:
+          name: haproxy-ssh-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ssh-multi-project-nlb
+  namespace: ssh-gateway
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+spec:
+  type: LoadBalancer
+  ports:
+  - name: project-1
+    port: 2201
+    targetPort: 2201
+    protocol: TCP
+  - name: project-2
+    port: 2202
+    targetPort: 2202
+    protocol: TCP
+  - name: project-3
+    port: 2203
+    targetPort: 2203
+    protocol: TCP
+  # Add more ports for each project (up to 200)
+  selector:
+    app: ssh-tcp-proxy

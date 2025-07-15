@@ -1,0 +1,105 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: rhel9-webserver-bare-metal
+  namespace: webserver
+  labels:
+    app: webserver
+spec:
+  runStrategy: Always
+  dataVolumeTemplates:
+  - metadata:
+      name: rhel9-webserver-rootdisk
+    spec:
+      pvc:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 30Gi
+        storageClassName: gp3-csi
+      sourceRef:
+        kind: DataSource
+        name: rhel9
+        namespace: openshift-virtualization-os-images
+  template:
+    metadata:
+      labels:
+        kubevirt.io/domain: rhel9-webserver-bare-metal
+        kubevirt.io/size: small
+        vm.kubevirt.io/name: rhel9-webserver-bare-metal
+    spec:
+      domain:
+        cpu:
+          cores: 2
+          sockets: 1
+          threads: 1
+        devices:
+          autoattachPodInterface: false
+          autoattachSerialConsole: true
+          autoattachGraphicsDevice: true
+          disks:
+          - name: rootdisk
+            disk:
+              bus: virtio
+          - name: cloudinitdisk
+            disk:
+              bus: virtio
+          interfaces:
+          - name: default
+            masquerade: {}
+            model: virtio
+        features:
+          acpi: {}
+        firmware:
+          bootloader:
+            efi:
+              secureBoot: false
+        machine:
+          type: pc-q35-rhel9.4.0
+        memory:
+          guest: 4Gi
+        resources:
+          requests:
+            memory: 4Gi
+            cpu: "2"
+      nodeSelector:
+        node.kubernetes.io/instance-type: m5.metal
+      networks:
+      - name: default
+        pod: {}
+      terminationGracePeriodSeconds: 180
+      volumes:
+      - name: rootdisk
+        dataVolume:
+          name: rhel9-webserver-rootdisk
+      - name: cloudinitdisk
+        cloudInitNoCloud:
+          userData: |
+            #cloud-config
+            user: admin
+            password: redhat123
+            chpasswd: { expire: False }
+            ssh_pwauth: True
+            package_update: true
+            packages:
+              - httpd
+              - curl
+              - wget
+              - vim
+              - firewalld
+            runcmd:
+              - systemctl enable httpd
+              - systemctl start httpd
+              - systemctl enable firewalld
+              - systemctl start firewalld
+              - firewall-cmd --permanent --add-service=http
+              - firewall-cmd --permanent --add-service=https
+              - firewall-cmd --permanent --add-service=ssh
+              - firewall-cmd --reload
+              - echo "<h1>Welcome to RHEL 9 Web Server on Bare Metal</h1>" > /var/www/html/index.html
+              - echo "<p>Server started on $(date)</p>" >> /var/www/html/index.html
+              - echo "<p>Hostname: $(hostname)</p>" >> /var/www/html/index.html
+              - echo "<p>IP Address: $(hostname -I)</p>" >> /var/www/html/index.html
+              - chown apache:apache /var/www/html/index.html
+              - systemctl restart httpd

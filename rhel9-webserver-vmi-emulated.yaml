@@ -1,0 +1,62 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachineInstance
+metadata:
+  name: rhel9-webserver
+  namespace: webserver
+  labels:
+    app: webserver
+  annotations:
+    kubevirt.io/useEmulation: "true"
+spec:
+  domain:
+    machine:
+      type: "pc-q35-rhel9.4.0"
+    cpu:
+      cores: 2
+      sockets: 1
+      threads: 1
+    devices:
+      disks:
+      - disk:
+          bus: virtio
+        name: rootdisk
+      - disk:
+          bus: virtio
+        name: cloudinitdisk
+      interfaces:
+      - masquerade: {}
+        name: default
+      useVirtioTransitional: true
+    resources:
+      requests:
+        memory: 2Gi
+        cpu: 1
+      limits:
+        memory: 4Gi
+        cpu: 2
+  networks:
+  - name: default
+    pod: {}
+  nodeSelector:
+    node.kubernetes.io/instance-type: m5n.xlarge
+  volumes:
+  - containerDisk:
+      image: quay.io/containerdisks/centos-stream:9
+    name: rootdisk
+  - cloudInitNoCloud:
+      userData: |
+        #cloud-config
+        user: cloud-user
+        password: redhat
+        chpasswd: { expire: False }
+        ssh_pwauth: True
+        packages:
+          - httpd
+          - curl
+          - vim
+        runcmd:
+          - systemctl enable httpd
+          - systemctl start httpd
+          - echo "<h1>RHEL 9 Web Server (KubeVirt VM - Software Emulation)</h1>" > /var/www/html/index.html
+          - systemctl reload httpd
+    name: cloudinitdisk

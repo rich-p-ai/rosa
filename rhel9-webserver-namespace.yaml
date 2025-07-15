@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: webserver
+  labels:
+    name: webserver
+    app: rhel9-webserver

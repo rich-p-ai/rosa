@@ -1,0 +1,191 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: rosa-web-apps
+  namespace: openshift-gitops
+  labels:
+    app: rosa-web-apps
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-username/rosa-apps.git  # Update this with your actual repo
+    targetRevision: HEAD
+    path: apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m0s
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: react-frontend
+  namespace: openshift-gitops
+  labels:
+    app: react-frontend
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-username/rosa-apps.git  # Update this with your actual repo
+    targetRevision: HEAD
+    path: apps/react-frontend
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: react-frontend
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m0s
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vue-frontend
+  namespace: openshift-gitops
+  labels:
+    app: vue-frontend
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-username/rosa-apps.git  # Update this with your actual repo
+    targetRevision: HEAD
+    path: apps/vue-frontend
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vue-frontend
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m0s
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: angular-frontend
+  namespace: openshift-gitops
+  labels:
+    app: angular-frontend
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-username/rosa-apps.git  # Update this with your actual repo
+    targetRevision: HEAD
+    path: apps/angular-frontend
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: angular-frontend
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m0s
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nodejs-backend
+  namespace: openshift-gitops
+  labels:
+    app: nodejs-backend
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-username/rosa-apps.git  # Update this with your actual repo
+    targetRevision: HEAD
+    path: apps/nodejs-backend
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: nodejs-backend
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m0s
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: django-backend
+  namespace: openshift-gitops
+  labels:
+    app: django-backend
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-username/rosa-apps.git  # Update this with your actual repo
+    targetRevision: HEAD
+    path: apps/django-backend
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: django-backend
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m0s

@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rhel9-webserver
+  namespace: webserver
+  labels:
+    app: webserver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webserver
+  template:
+    metadata:
+      labels:
+        app: webserver
+    spec:
+      containers:
+      - name: httpd
+        image: registry.redhat.io/ubi9/httpd-24:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: HTTPD_VAR_RUN
+          value: /tmp
+        - name: HTTPD_MAIN_CONF_D_PATH
+          value: /etc/httpd/conf.d
+        - name: HTTPD_DEFAULT_CONF_D_PATH
+          value: /etc/httpd/conf.d
+        - name: HTTPD_VAR_RUN
+          value: /tmp
+        volumeMounts:
+        - name: html-content
+          mountPath: /var/www/html
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          seccompProfile:
+            type: RuntimeDefault
+          capabilities:
+            drop:
+            - ALL
+      initContainers:
+      - name: setup-content
+        image: registry.redhat.io/ubi9/ubi:latest
+        command:
+        - /bin/bash
+        - -c
+        - |
+          cat > /var/www/html/index.html << 'HTML'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>RHEL 9 Web Server (Containerized)</title>
+              <style>
+                  body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f4f4; }
+                  .container { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                  h1 { color: #c41e3a; }
+                  .info { background-color: #e6f3ff; padding: 10px; border-radius: 4px; margin: 10px 0; }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>🌐 Welcome to RHEL 9 Web Server</h1>
+                  <div class="info">
+                      <p><strong>Deployment Type:</strong> Containerized (UBI9 + HTTPd)</p>
+          HTML
+          echo "                      <p><strong>Server Started:</strong> $(date)</p>" >> /var/www/html/index.html
+          echo "                      <p><strong>Hostname:</strong> $(hostname)</p>" >> /var/www/html/index.html
+          cat >> /var/www/html/index.html << 'HTML'
+                      <p><strong>Status:</strong> ✅ Running on OpenShift in ROSA</p>
+                  </div>
+                  <h2>🔧 System Information</h2>
+                  <ul>
+                      <li><strong>Container Runtime:</strong> Red Hat Universal Base Image 9</li>
+                      <li><strong>Web Server:</strong> Apache HTTPd 2.4</li>
+                      <li><strong>Platform:</strong> Red Hat OpenShift Service on AWS (ROSA)</li>
+                      <li><strong>Namespace:</strong> webserver</li>
+                  </ul>
+                  <h2>🎯 Deployment Complete</h2>
+                  <p>This containerized web server is now running successfully on your ROSA cluster!</p>
+              </div>
+          </body>
+          </html>
+          HTML
+        volumeMounts:
+        - name: html-content
+          mountPath: /var/www/html
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          seccompProfile:
+            type: RuntimeDefault
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: html-content
+        emptyDir: {}

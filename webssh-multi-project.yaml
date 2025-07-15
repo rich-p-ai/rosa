@@ -1,0 +1,96 @@
+# Simple solution: Each project gets its own subdomain with web-based SSH
+# Developers access: https://project-1.ssh.p-ai.net, https://project-2.ssh.p-ai.net, etc.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ssh-gateway
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webssh-proxy
+  namespace: ssh-gateway
+  labels:
+    app: webssh-proxy
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: webssh-proxy
+  template:
+    metadata:
+      labels:
+        app: webssh-proxy
+    spec:
+      containers:
+      - name: webssh
+        image: huashengdun/webssh:latest
+        ports:
+        - containerPort: 8888
+        env:
+        - name: WORKERS
+          value: "8"
+        - name: POLICY
+          value: "autoadd"
+        - name: HOST_KEY_CHECKING
+          value: "false"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webssh-service
+  namespace: ssh-gateway
+spec:
+  ports:
+  - port: 8888
+    targetPort: 8888
+    name: webssh
+  selector:
+    app: webssh-proxy
+---
+# Template for project routes - generate one for each project
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: project-1-ssh-route
+  namespace: ssh-gateway
+  labels:
+    project: project-1
+spec:
+  host: project-1.ssh.p-ai.net
+  to:
+    kind: Service
+    name: webssh-service
+  port:
+    targetPort: webssh
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+---
+# Each project needs a ClusterIP service for SSH
+apiVersion: v1
+kind: Service
+metadata:
+  name: project-1-ssh
+  namespace: project-1
+  labels:
+    app: project-1
+    ssh-enabled: "true"
+spec:
+  type: ClusterIP
+  ports:
+  - name: ssh
+    port: 22
+    targetPort: 22
+    protocol: TCP
+  selector:
+    app: project-1

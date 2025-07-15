@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rhel9-webserver-deployment-service
+  namespace: webserver
+  labels:
+    app: webserver
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: webserver
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: rhel9-webserver-deployment-route
+  namespace: webserver
+spec:
+  to:
+    kind: Service
+    name: rhel9-webserver-deployment-service
+  port:
+    targetPort: http

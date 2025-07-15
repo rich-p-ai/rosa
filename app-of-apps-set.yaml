@@ -1,0 +1,58 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: web-applications-set
+  namespace: openshift-gitops
+  labels:
+    app.kubernetes.io/name: web-applications-set
+    app.kubernetes.io/part-of: rosa-deployment
+spec:
+  generators:
+  - list:
+      elements:
+      - name: react-frontend
+        namespace: react-frontend
+        path: apps/react-frontend
+      - name: vue-frontend
+        namespace: vue-frontend
+        path: apps/vue-frontend
+      - name: angular-frontend
+        namespace: angular-frontend
+        path: apps/angular-frontend
+      - name: nodejs-backend
+        namespace: nodejs-backend
+        path: apps/nodejs-backend
+      - name: django-backend
+        namespace: django-backend
+        path: apps/django-backend
+  template:
+    metadata:
+      name: '{{name}}-app'
+      namespace: openshift-gitops
+      labels:
+        app.kubernetes.io/name: '{{name}}'
+        app.kubernetes.io/part-of: web-applications
+        argocd.argoproj.io/application-set-name: web-applications-set
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/rich-p-ai/apps.git
+        targetRevision: HEAD
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true
+        - RespectIgnoreDifferences=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+      revisionHistoryLimit: 10

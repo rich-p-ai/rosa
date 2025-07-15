@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rhel9-webserver-nodeport-ssh
+  namespace: webserver
+  labels:
+    app: webserver
+    service-type: nodeport
+spec:
+  type: NodePort
+  ports:
+  - name: ssh
+    port: 22
+    targetPort: 22
+    nodePort: 30022
+    protocol: TCP
+  selector:
+    app: webserver

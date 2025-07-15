@@ -1,0 +1,105 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: rhel9-webserver
+  namespace: webserver
+  labels:
+    app: webserver
+    vm.kubevirt.io/template: rhel9-server-medium
+  annotations:
+    kubevirt.io/useEmulation: "true"
+spec:
+  running: false
+  template:
+    metadata:
+      labels:
+        kubevirt.io/domain: rhel9-webserver
+        kubevirt.io/size: medium
+        vm.kubevirt.io/name: rhel9-webserver
+      annotations:
+        kubevirt.io/useEmulation: "true"
+    spec:
+      domain:
+        machine:
+          type: "pc-q35-rhel9.4.0"
+        cpu:
+          cores: 2
+          sockets: 1
+          threads: 1
+        devices:
+          disks:
+          - disk:
+              bus: virtio
+            name: rootdisk
+          - disk:
+              bus: virtio
+            name: cloudinitdisk
+          interfaces:
+          - masquerade: {}
+            name: default
+        resources:
+          requests:
+            memory: 4Gi
+      networks:
+      - name: default
+        pod: {}
+      nodeSelector:
+        node.kubernetes.io/instance-type: m5n.xlarge
+      volumes:
+      - containerDisk:
+          image: quay.io/containerdisks/centos-stream:9
+        name: rootdisk
+      - cloudInitNoCloud:
+          userData: |
+            #cloud-config
+            user: cloud-user
+            password: redhat
+            chpasswd: { expire: False }
+            ssh_pwauth: True
+            packages:
+              - httpd
+              - curl
+              - vim
+            runcmd:
+              - systemctl enable httpd
+              - systemctl start httpd
+              - |
+                cat > /var/www/html/index.html << 'HTML'
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>RHEL 9 Web Server (KubeVirt VM)</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f4f4; }
+                        .container { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                        h1 { color: #c41e3a; }
+                        .info { background-color: #e6f3ff; padding: 10px; border-radius: 4px; margin: 10px 0; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>🚀 Welcome to RHEL 9 Web Server (VM)</h1>
+                        <div class="info">
+                            <p><strong>Deployment Type:</strong> KubeVirt Virtual Machine</p>
+                            <p><strong>Virtualization:</strong> Software Emulation (QEMU)</p>
+                            <p><strong>Machine Type:</strong> pc-q35-rhel9.4.0</p>
+                            <p><strong>Server Started:</strong> $(date)</p>
+                            <p><strong>Hostname:</strong> $(hostname)</p>
+                            <p><strong>Status:</strong> ✅ Running on OpenShift Virtualization</p>
+                        </div>
+                        <h2>💻 System Information</h2>
+                        <ul>
+                            <li><strong>OS:</strong> CentOS Stream 9 (RHEL 9 compatible)</li>
+                            <li><strong>Web Server:</strong> Apache HTTPd</li>
+                            <li><strong>Platform:</strong> Red Hat OpenShift Service on AWS (ROSA)</li>
+                            <li><strong>Virtualization:</strong> KubeVirt with Software Emulation</li>
+                            <li><strong>Namespace:</strong> webserver</li>
+                        </ul>
+                        <h2>🎯 Success!</h2>
+                        <p>This VM is running successfully using software emulation instead of hardware acceleration!</p>
+                    </div>
+                </body>
+                </html>
+                HTML
+              - systemctl reload httpd
+        name: cloudinitdisk

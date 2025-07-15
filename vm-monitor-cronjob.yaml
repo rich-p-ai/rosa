@@ -1,0 +1,105 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vm-bare-metal-monitor
+  namespace: webserver
+  labels:
+    app: vm-monitor
+spec:
+  schedule: "*/5 * * * *"  # Check every 5 minutes
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 300
+      template:
+        metadata:
+          labels:
+            app: vm-monitor
+        spec:
+          serviceAccountName: vm-deployer
+          restartPolicy: OnFailure
+          containers:
+          - name: monitor
+            image: registry.redhat.io/ubi8/ubi:latest
+            command: ["/bin/bash"]
+            args:
+              - -c
+              - |
+                # Install required tools
+                dnf update -y &>/dev/null
+                dnf install -y curl &>/dev/null
+                
+                # Download and install oc CLI
+                curl -sL https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz | tar xz -C /tmp
+                mv /tmp/oc /usr/local/bin/
+                chmod +x /usr/local/bin/oc
+                
+                echo "Checking for bare metal nodes and VM status..."
+                
+                # Check if VM already exists and is running
+                if oc get vm rhel9-webserver-bare-metal -n webserver &>/dev/null; then
+                  VM_RUNNING=$(oc get vm rhel9-webserver-bare-metal -n webserver -o jsonpath='{.spec.running}' 2>/dev/null || echo "false")
+                  VM_PHASE=$(oc get vmi rhel9-webserver-bare-metal -n webserver -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+                  
+                  echo "VM exists. Running: $VM_RUNNING, Phase: $VM_PHASE"
+                  
+                  if [ "$VM_RUNNING" = "true" ] && [ "$VM_PHASE" = "Running" ]; then
+                    echo "VM is running successfully. No action needed."
+                    exit 0
+                  elif [ "$VM_RUNNING" = "true" ] && [ "$VM_PHASE" != "Running" ]; then
+                    echo "VM is set to run but not in Running phase. Waiting for it to start..."
+                    exit 0
+                  elif [ "$VM_RUNNING" = "false" ]; then
+                    echo "VM exists but is stopped. Starting VM..."
+                    oc patch vm rhel9-webserver-bare-metal -n webserver --type='merge' -p='{"spec":{"running":true}}'
+                    echo "VM start initiated."
+                    exit 0
+                  fi
+                fi
+                
+                # Check for ready bare metal nodes
+                READY_NODES=$(oc get nodes -l "node.kubernetes.io/instance-type=m5.metal" --no-headers 2>/dev/null | grep -c " Ready " || echo "0")
+                
+                if [ "$READY_NODES" -gt 0 ]; then
+                  echo "Found $READY_NODES ready bare metal node(s). VM does not exist. Creating deployment job..."
+                  
+                  # Create a one-time job to deploy the VM
+                  cat <<EOF | oc apply -f -
+                apiVersion: batch/v1
+                kind: Job
+                metadata:
+                  name: vm-deployer-$(date +%s)
+                  namespace: webserver
+                spec:
+                  template:
+                    spec:
+                      serviceAccountName: vm-deployer
+                      restartPolicy: Never
+                      containers:
+                      - name: deployer
+                        image: registry.redhat.io/ubi8/ubi:latest
+                        command: ["/bin/bash", "-c"]
+                        args:
+                        - |
+                          dnf update -y && dnf install -y curl
+                          curl -sL https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz | tar xz -C /tmp
+                          mv /tmp/oc /usr/local/bin/ && chmod +x /usr/local/bin/oc
+                          oc apply -f - <<VMEOF
+                          $(cat /Users/richardsawyers/work/rosa/rhel9-webserver-vm-bare-metal.yaml | sed 's/rhel9-webserver-rootdisk/rhel9-webserver-rootdisk-bm/g')
+                          VMEOF
+                          echo "VM deployed successfully"
+                EOF
+                  
+                  echo "Deployment job created."
+                else
+                  echo "No ready bare metal nodes found. Will check again in next scheduled run."
+                fi
+            resources:
+              limits:
+                memory: "128Mi"
+                cpu: "100m"
+              requests:
+                memory: "64Mi"
+                cpu: "50m"

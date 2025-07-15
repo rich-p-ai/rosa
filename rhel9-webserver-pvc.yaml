@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rhel9-webserver-rootdisk
+  namespace: webserver
+  labels:
+    app: webserver
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 30Gi
+  storageClassName: gp3-csi
+  dataSource:
+    apiGroup: cdi.kubevirt.io
+    kind: DataVolume
+    name: rhel9-webserver-rootdisk
+---
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataVolume
+metadata:
+  name: rhel9-webserver-rootdisk
+  namespace: webserver
+  labels:
+    app: webserver
+spec:
+  pvc:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 30Gi
+    storageClassName: gp3-csi
+  sourceRef:
+    kind: DataSource
+    name: rhel9
+    namespace: openshift-virtualization-os-images
