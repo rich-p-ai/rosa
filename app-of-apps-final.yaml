@@ -36,8 +36,8 @@ spec:
     spec:
       project: web-applications
       source:
-        repoURL: https://github.com/rich-p-ai/apps.git
-        targetRevision: HEAD
+        repoURL: https://github.com/rich-p-ai/rosa.git
+        targetRevision: rosa
         path: '{{path}}'
       destination:
         server: https://kubernetes.default.svc
