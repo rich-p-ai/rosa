@@ -3,7 +3,7 @@ kind: Kustomization
 
 resources:
 - namespace.yaml
-- deployment.yaml
+- deployment-fixed.yaml
 - service.yaml
 - route.yaml
 
