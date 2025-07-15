@@ -6,7 +6,7 @@ metadata:
   labels:
     app: angular-frontend
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: angular-frontend
@@ -17,7 +17,6 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
-        fsGroup: 1001
       containers:
       - name: angular-app
         image: registry.redhat.io/ubi9/nginx-120:latest
@@ -31,14 +30,65 @@ spec:
           capabilities:
             drop:
             - ALL
-        env:
-        - name: NGINX_LOG_TO_VOLUME
-          value: "1"
         command: ["/bin/sh"]
-        args: ["-c", "mkdir -p /tmp/nginx /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp /var/cache/nginx/fastcgi_temp /var/cache/nginx/uwsgi_temp /var/cache/nginx/scgi_temp && echo 'server { listen 8080; server_name _; root /usr/share/nginx/html; index index.html; location / { try_files $uri $uri/ /index.html; } }' > /tmp/nginx.conf && nginx -c /tmp/nginx.conf -g 'daemon off; error_log /tmp/error.log; access_log /tmp/access.log; pid /tmp/nginx.pid;'"]
+        args: 
+        - "-c"
+        - |
+          mkdir -p /tmp/html /tmp/nginx /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp /var/cache/nginx/fastcgi_temp /var/cache/nginx/uwsgi_temp /var/cache/nginx/scgi_temp
+          
+          echo '<!DOCTYPE html>
+          <html>
+          <head>
+            <title>Angular Frontend</title>
+            <style>
+              body { font-family: Arial; margin: 40px; background: #f5f5f5; }
+              h1 { color: #dd0031; }
+              .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+              .api-section { margin-top: 20px; padding: 15px; background: #fce4ec; border-radius: 4px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>⚡ Angular Frontend</h1>
+              <p>Welcome to the Angular frontend application deployed on Red Hat OpenShift!</p>
+              <div class="api-section">
+                <h3>Backend APIs:</h3>
+                <p><strong>Node.js:</strong> <a href="https://nodejs-backend-route-nodejs-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com" target="_blank">nodejs-backend-route-nodejs-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com</a></p>
+                <p><strong>Django:</strong> <a href="https://django-backend-route-django-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com" target="_blank">django-backend-route-django-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com</a></p>
+              </div>
+              <p><em>Powered by Red Hat UBI9 + OpenShift + GitOps</em></p>
+            </div>
+          </body>
+          </html>' > /tmp/html/index.html
+          
+          cat > /tmp/nginx.conf << 'NGINX_EOF'
+          http {
+              include       /etc/nginx/mime.types;
+              default_type  application/octet-stream;
+              sendfile        on;
+              keepalive_timeout  65;
+              access_log /tmp/access.log;
+              error_log /tmp/error.log;
+              
+              server {
+                  listen 8080;
+                  server_name _;
+                  root /tmp/html;
+                  index index.html;
+                  
+                  location / {
+                      try_files $uri $uri/ /index.html;
+                  }
+              }
+          }
+          
+          events {
+              worker_connections  1024;
+          }
+          NGINX_EOF
+          
+          nginx -c /tmp/nginx.conf -g 'daemon off; pid /tmp/nginx.pid;'
         volumeMounts:
-        - name: app-content
-          mountPath: /usr/share/nginx/html
         - name: tmp-volume
           mountPath: /tmp
         - name: var-cache-nginx
@@ -62,32 +112,7 @@ spec:
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 5
-      initContainers:
-      - name: angular-builder
-        image: registry.redhat.io/ubi9/nodejs-18:latest
-        securityContext:
-          allowPrivilegeEscalation: false
-          runAsNonRoot: true
-          seccompProfile:
-            type: RuntimeDefault
-          capabilities:
-            drop:
-            - ALL
-        command: ["/bin/sh"]
-        args: ["-c", "echo '<!DOCTYPE html><html><head><title>Angular Frontend</title><style>body{font-family:Arial;margin:40px;background:#f5f5f5}h1{color:#dd0031}.container{background:white;padding:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}.api-section{margin-top:20px;padding:15px;background:#fce4ec;border-radius:4px}</style></head><body><div class=\"container\"><h1>⚡ Angular Frontend</h1><p>Welcome to the Angular frontend application deployed on Red Hat OpenShift!</p><div class=\"api-section\"><h3>Backend APIs:</h3><p><strong>Node.js:</strong> <a href=\"https://nodejs-backend-route-nodejs-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com\" target=\"_blank\">nodejs-backend-route-nodejs-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com</a></p><p><strong>Django:</strong> <a href=\"https://django-backend-route-django-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com\" target=\"_blank\">django-backend-route-django-backend.apps.h8g2j4v4e6k5y5w.vgdv.p1.openshiftapps.com</a></p></div><p><em>Powered by Red Hat UBI9 + OpenShift + GitOps</em></p></div></body></html>' > /usr/share/nginx/html/index.html"]
-        volumeMounts:
-        - name: app-content
-          mountPath: /usr/share/nginx/html
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "200m"
       volumes:
-      - name: app-content
-        emptyDir: {}
       - name: tmp-volume
         emptyDir: {}
       - name: var-cache-nginx
