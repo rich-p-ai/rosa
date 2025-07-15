@@ -43,15 +43,92 @@ spec:
         args: 
         - "-c"
         - |
-          mkdir -p /tmp/nginx /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp /var/cache/nginx/fastcgi_temp /var/cache/nginx/uwsgi_temp /var/cache/nginx/scgi_temp
-          echo '<html><body><h1>React Frontend</h1><p>Deployed on ROSA with GitOps!</p></body></html>' > /usr/share/nginx/html/index.html
-          echo 'server { listen 8080; server_name _; root /usr/share/nginx/html; index index.html; location / { try_files $uri $uri/ /index.html; } }' > /tmp/nginx.conf
-          nginx -c /tmp/nginx.conf -g 'daemon off; error_log /tmp/error.log; access_log /tmp/access.log; pid /tmp/nginx.pid;'
+          # Create writable directories
+          mkdir -p /tmp/nginx /tmp/html /tmp/client_temp /tmp/proxy_temp /tmp/fastcgi_temp /tmp/uwsgi_temp /tmp/scgi_temp
+          
+          # Create HTML content in writable location
+          cat > /tmp/html/index.html << 'HTMLEOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>React Frontend - ROSA Deployment</title>
+              <style>
+                  body { 
+                      font-family: Arial, sans-serif; 
+                      background: linear-gradient(135deg, #61dafb 0%, #21759b 100%);
+                      margin: 0; padding: 20px; min-height: 100vh;
+                      display: flex; align-items: center; justify-content: center;
+                  }
+                  .container { 
+                      background: white; padding: 40px; border-radius: 16px;
+                      box-shadow: 0 20px 40px rgba(0,0,0,0.1); text-align: center;
+                      max-width: 600px;
+                  }
+                  h1 { color: #61dafb; font-size: 2.5em; margin-bottom: 20px; }
+                  .info { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>🚀 React Frontend</h1>
+                  <p>Successfully deployed on Red Hat OpenShift Service on AWS (ROSA)</p>
+                  <div class="info">
+                      <h3>✅ Deployment Status</h3>
+                      <p>Pod is running with GitOps automation</p>
+                      <p>Using Red Hat UBI9 nginx container</p>
+                  </div>
+                  <div class="info">
+                      <h3>🔧 Access Methods</h3>
+                      <p>Web UI: Available via OpenShift Route</p>
+                      <p>Shell Access: Use <code>oc rsh deployment/react-frontend-ssh</code></p>
+                  </div>
+              </div>
+          </body>
+          </html>
+          HTMLEOF
+          
+          # Create nginx config in /tmp with proper structure
+          cat > /tmp/nginx.conf << 'NGINXEOF'
+          worker_processes auto;
+          error_log /tmp/error.log;
+          pid /tmp/nginx.pid;
+          
+          events {
+              worker_connections 1024;
+          }
+          
+          http {
+              include /etc/nginx/mime.types;
+              default_type application/octet-stream;
+              
+              access_log /tmp/access.log;
+              
+              client_body_temp_path /tmp/client_temp;
+              proxy_temp_path /tmp/proxy_temp;
+              fastcgi_temp_path /tmp/fastcgi_temp;
+              uwsgi_temp_path /tmp/uwsgi_temp;
+              scgi_temp_path /tmp/scgi_temp;
+              
+              server {
+                  listen 8080;
+                  server_name _;
+                  root /tmp/html;
+                  index index.html;
+                  
+                  location / {
+                      try_files $uri $uri/ /index.html;
+                  }
+              }
+          }
+          NGINXEOF
+          
+          # Start nginx
+          nginx -c /tmp/nginx.conf -g 'daemon off;'
         volumeMounts:
         - name: tmp-volume
           mountPath: /tmp
-        - name: var-cache-nginx
-          mountPath: /var/cache/nginx
         resources:
           requests:
             memory: "64Mi"
@@ -73,6 +150,4 @@ spec:
           periodSeconds: 5
       volumes:
       - name: tmp-volume
-        emptyDir: {}
-      - name: var-cache-nginx
         emptyDir: {}
